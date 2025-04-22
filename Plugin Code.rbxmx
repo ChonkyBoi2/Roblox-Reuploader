@@ -1,0 +1,138 @@
+local toolbar = plugin:CreateToolbar("Asset Reuploader")
+local pluginButton = toolbar:CreateButton("ToggleGUI", "ChunkyBoiii", "rbxassetid://8073107254")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AnimationToolsGUI"
+screenGui.ResetOnSpawn = false
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 400, 0, 250)
+frame.Position = UDim2.new(0.5, -200, 0.5, -125)
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 40)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Asset Reuploader"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 24
+titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+titleLabel.Parent = frame
+
+local reuploadButton = Instance.new("TextButton")
+reuploadButton.Size = UDim2.new(0.9, 0, 0, 50)
+reuploadButton.Position = UDim2.new(0.05, 0, 0.3, 0)
+reuploadButton.BackgroundColor3 = Color3.fromRGB(50, 150, 255)
+reuploadButton.Text = "Reupload Animations"
+reuploadButton.Font = Enum.Font.GothamSemibold
+reuploadButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+reuploadButton.TextSize = 18
+reuploadButton.AutoButtonColor = true
+reuploadButton.Parent = frame
+
+local infoButton = Instance.new("TextButton")
+infoButton.Size = UDim2.new(0.9, 0, 0, 50)
+infoButton.Position = UDim2.new(0.05, 0, 0.6, 0)
+infoButton.BackgroundColor3 = Color3.fromRGB(75, 75, 75)
+infoButton.Text = "Information"
+infoButton.Font = Enum.Font.GothamSemibold
+infoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+infoButton.TextSize = 18
+infoButton.AutoButtonColor = true
+infoButton.Parent = frame
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 30, 0, 30)
+closeButton.Position = UDim2.new(1, -35, 0, 5)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeButton.Text = "X"
+closeButton.Font = Enum.Font.GothamBold
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.TextSize = 20
+closeButton.AutoButtonColor = true
+closeButton.Parent = frame
+
+local function applyRoundedCorners(instance)
+	local uiCorner = Instance.new("UICorner")
+	uiCorner.CornerRadius = UDim.new(0, 8)
+	uiCorner.Parent = instance
+end
+
+applyRoundedCorners(frame)
+applyRoundedCorners(reuploadButton)
+applyRoundedCorners(infoButton)
+applyRoundedCorners(closeButton)
+
+local guiEnabled = false
+pluginButton.Click:Connect(function()
+	guiEnabled = not guiEnabled
+	screenGui.Enabled = guiEnabled
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	screenGui.Enabled = false
+end)
+
+local function extractAnimationDataFromObjects()
+	local uniqueAnimations = {}
+
+	for _, animation in ipairs(game:GetDescendants()) do
+		if animation:IsA("Animation") then
+			local id = animation.AnimationId:match("%d+")
+			if id then
+				uniqueAnimations[id] = animation.Name -- Store the ID and its corresponding name
+			end
+		end
+	end
+
+	local result = {}
+	for id, name in pairs(uniqueAnimations) do
+		table.insert(result, { id = id, name = name }) -- Create a table for each animation
+	end
+
+	return result
+end
+
+reuploadButton.MouseButton1Click:Connect(function()
+	local animationData = extractAnimationDataFromObjects()
+
+	if #animationData == 0 then
+		warn("No animations found in the game!")
+		return
+	end
+
+	local httpService = game:GetService("HttpService")
+	local success, response = pcall(function()
+		return httpService:PostAsync(
+			"http://localhost:8080/reupload",
+			httpService:JSONEncode({ animationData = animationData }), -- Send animation data with IDs and names
+			Enum.HttpContentType.ApplicationJson
+		)
+	end)
+
+	if success then
+		local newAnimationIds = httpService:JSONDecode(response)
+
+		local animations = game:GetDescendants()
+		for _, animation in ipairs(animations) do
+			if animation:IsA("Animation") and newAnimationIds[animation.AnimationId:match("%d+")] then
+				animation.AnimationId = "rbxassetid://" .. newAnimationIds[animation.AnimationId:match("%d+")]
+			end
+		end
+
+		print("Animations reuploaded successfully!")
+	else
+		warn("Failed to reupload animations:", response)
+	end
+end)
+
+infoButton.MouseButton1Click:Connect(function()
+	print("For More Assistance, Join The Discord.!")
+end)
+
+screenGui.Parent = game:GetService("CoreGui")
+screenGui.Enabled = false
