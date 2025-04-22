@@ -84,14 +84,14 @@ local function extractAnimationDataFromObjects()
 		if animation:IsA("Animation") then
 			local id = animation.AnimationId:match("%d+")
 			if id then
-				uniqueAnimations[id] = animation.Name -- Store the ID and its corresponding name
+				uniqueAnimations[id] = animation.Name
 			end
 		end
 	end
 
 	local result = {}
 	for id, name in pairs(uniqueAnimations) do
-		table.insert(result, { id = id, name = name }) -- Create a table for each animation
+		table.insert(result, { id = id, name = name })
 	end
 
 	return result
@@ -109,7 +109,7 @@ reuploadButton.MouseButton1Click:Connect(function()
 	local success, response = pcall(function()
 		return httpService:PostAsync(
 			"http://localhost:8080/reupload",
-			httpService:JSONEncode({ animationData = animationData }), -- Send animation data with IDs and names
+			httpService:JSONEncode({ animationData = animationData }),
 			Enum.HttpContentType.ApplicationJson
 		)
 	end)
