@@ -6,26 +6,24 @@ import asyncio
 import re
 import time
 from colorama import init, Fore, Style
-import sys  # Import sys for sys.exit()
+import sys
 init(autoreset=True)
-
 PORT = 8080
 COOKIE_FILE = 'Cookie.txt'
 CONCURRENCY_LIMIT = 300
 BASE_REQUEST_DELAY = 0.1
 MAX_RETRIES = 3
 RETRY_BACKOFF = 1.4
-
 session_state = {
     "roblox_cookie": "",
     "csrf_token": "",
     "user_id": None,
-    "username": None
+    "username": None,
+    "upload_to_group": False,
+    "group_id": ""
 }
-
 def validate_cookie(cookie):
     return cookie and len(cookie) > 100 and "_|WARNING:-DO-NOT-SHARE-THIS." in cookie
-
 async def get_user_info():
     async with aiohttp.ClientSession() as session:
         try:
@@ -42,7 +40,6 @@ async def get_user_info():
         except Exception as e:
             print(f"Error authenticating user: {e}")
     return False
-
 async def refresh_csrf_token():
     async with aiohttp.ClientSession() as session:
         try:
@@ -61,7 +58,6 @@ async def refresh_csrf_token():
         except Exception as e:
             print(f"Error refreshing CSRF token: {e}")
     return False
-
 async def fetch_animation(session, animation_id, retries=MAX_RETRIES):
     for attempt in range(retries):
         try:
@@ -84,7 +80,6 @@ async def fetch_animation(session, animation_id, retries=MAX_RETRIES):
         except Exception as e:
             print(f"Error fetching animation ID: {animation_id} ({e})")
     return None
-
 async def upload_animation(session, animation_data, animation_name, animation_id, retries=MAX_RETRIES):
     if not session_state["csrf_token"]:
         if not await refresh_csrf_token():
@@ -93,11 +88,11 @@ async def upload_animation(session, animation_data, animation_name, animation_id
         try:
             params = {
                 "assetTypeName": "Animation",
-                "name": f"{animation_name}_Reupload_{int(time.time())}",  # Use the original name here
+                "name": f"{animation_name}_Reupload_{int(time.time())}",
                 "description": "Automatically reuploaded",
                 "ispublic": "False",
                 "allowComments": "True",
-                "groupId": "",
+                "groupId": session_state["group_id"] if session_state["upload_to_group"] else "",
                 "isGamesAsset": "False"
             }
             async with session.post(
@@ -130,7 +125,6 @@ async def upload_animation(session, animation_data, animation_name, animation_id
         except Exception as e:
             print(f"Error uploading animation ID: {animation_id} ({e})")
     return None
-
 async def process_animations(animation_data_list):
     total_animations = len(animation_data_list)
     results = {}
@@ -141,7 +135,6 @@ async def process_animations(animation_data_list):
     print("\nReuploading Animations, This Might Take Some Seconds...")
     start_time = time.time()
     semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-
     async def process_single_with_limit(session, animation_data, index):
         nonlocal success_count, failure_count, invalid_count
         async with semaphore:
@@ -167,14 +160,12 @@ async def process_animations(animation_data_list):
                 print(log)
                 logs.append(log)
                 invalid_count += 1
-
     async with aiohttp.ClientSession() as session:
         tasks = [
             process_single_with_limit(session, animation_data, index)
             for index, animation_data in enumerate(animation_data_list)
         ]
         await asyncio.gather(*tasks)
-
     end_time = time.time()
     print("\n--- FINAL LOGS ---")
     for log in logs:
@@ -186,7 +177,6 @@ async def process_animations(animation_data_list):
     print(f"Invalid Animations: {invalid_count}")
     print(f"Time Taken: {end_time - start_time:.2f} seconds")
     return results
-
 async def handle_request(request):
     try:
         payload = await request.json()
@@ -197,7 +187,6 @@ async def handle_request(request):
         return web.json_response(results, status=200)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
-
 async def initialize_server():
     if os.path.exists(COOKIE_FILE):
         with open(COOKIE_FILE, "r") as f:
@@ -206,16 +195,27 @@ async def initialize_server():
         session_state["roblox_cookie"] = input("Enter .ROBLOSECURITY cookie: ").strip()
         if not validate_cookie(session_state["roblox_cookie"]):
             print("Invalid cookie format")
-            sys.exit(1)  # Use sys.exit() instead of exit
+            sys.exit(1)
         with open(COOKIE_FILE, "w") as f:
             f.write(session_state["roblox_cookie"])
     if not await get_user_info():
         print("Authentication failed")
-        sys.exit(1)  # Use sys.exit() instead of exit
+        sys.exit(1)
     if not await refresh_csrf_token():
         print("CSRF token initialization failed")
-        sys.exit(1)  # Use sys.exit() instead of exit
-
+        sys.exit(1)
+    choice = input("Would You Like To Upload To User Or Group? [User/Group]: ").strip().lower()
+    if choice == "group":
+        session_state["upload_to_group"] = True
+        while True:
+            group_id = input("Enter the custom Group ID you want to reupload to: ").strip()
+            if group_id.isdigit():
+                session_state["group_id"] = group_id
+                break
+            else:
+                print("Invalid Group ID. Please enter a numeric Group ID.")
+    elif choice != "user":
+        print("Invalid choice. Defaulting to User upload.")
     app = web.Application()
     app.router.add_post("/reupload", handle_request)
     runner = web.AppRunner(app)
@@ -225,6 +225,5 @@ async def initialize_server():
     await site.start()
     while True:
         await asyncio.sleep(3600)
-
 if __name__ == "__main__":
     asyncio.run(initialize_server())
